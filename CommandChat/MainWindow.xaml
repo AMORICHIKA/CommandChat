@@ -3,15 +3,18 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:my="clr-namespace:ControlLibrary"
         xmlns:local="clr-namespace:CommandChat"
         mc:Ignorable="d"
+        my:DpiHelper.IsEnabled="True"
         Title="MainWindow" Height="380" Width="750">
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="*"/>
-            <RowDefinition Height="26"/>
+            <RowDefinition Height="32"/>
         </Grid.RowDefinitions>
         <WebBrowser x:Name="brow" Grid.Row="0" HorizontalAlignment="Left" VerticalAlignment="Top"/>
         <TextBox local:TextBoxAssist.Watermark="コマンド入力..." x:Name="edit" Grid.Row="1" VerticalContentAlignment="Center"/>
+        <ScrollBar x:Name="scrl" HorizontalAlignment="Right" Height="30" Margin="0,1,1,0" Grid.Row="1" VerticalAlignment="Top" Width="14"/>
     </Grid>
 </Window>

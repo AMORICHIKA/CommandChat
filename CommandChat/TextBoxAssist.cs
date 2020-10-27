@@ -110,7 +110,7 @@ namespace	CommandChat
 					Opacity = 0.5,
 				},
 				Background = background,
-				Padding = new Thickness(4,4,0,0),
+				Padding = new Thickness(4,8,0,0),
 				Height = textBox.RenderSize.Height,
 				Width = textBox.RenderSize.Width,
 			};

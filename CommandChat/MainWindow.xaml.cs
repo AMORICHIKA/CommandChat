@@ -7,13 +7,13 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows;
-using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using Settings = CommandChat.Properties.Settings;
-//using ControlLibrary;
+using ControlLibrary;
 
 namespace	CommandChat
 {
@@ -27,11 +27,6 @@ namespace	CommandChat
 
 		[DllImport("CommandLib64.dll", EntryPoint = "RunCommand", CharSet = CharSet.Unicode)]
 		public	static	extern	string	RunCommand64(string command);
-
-		[DllImport("user32.dll")]
-		public	static	extern	IntPtr	PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
-
-		const	int		WM_APP = 0x8000;
 
 		private	IHTMLDocument2	_htmlDoc2;
 
@@ -50,13 +45,6 @@ namespace	CommandChat
 				return	new WindowInteropHelper(this).Handle;
 			}
 		}
-		private	ContextMenu	SystemMenu
-		{
-			get
-			{
-				return	Resources["systemMenu"] as ContextMenu;
-			}
-		}
 		/// <summary>
 		/// コンストラクタ
 		/// </summary>
@@ -64,24 +52,54 @@ namespace	CommandChat
 		{
 			this.InitializeComponent();
 			this.Loaded += MainWindow_Loaded;
+
 			this.Icon = new BitmapImage(new Uri("pack://application:,,,/Resources/console.png"));
 			this.Title = Directory.GetCurrentDirectory();
+
+			this.scrl.Maximum = 20;
+			this.scrl.Scroll += Scrl_Scroll;
 
 			this.brow.Navigated += Brow_Navigated;
 
 			// ナビゲート開始
 			this.brow.NavigateToStream(System.Reflection.Assembly.GetEntryAssembly().GetManifestResourceStream("CommandChat.Resources.index.html"));
 
+			// ウィンドウスタイルの設定
+			this.SourceInitialized += (s, e) =>
+			{
+				// 位置データがある場合は復元
+				Win32.SetWindowPosition(Settings.Default.MainWindow, this.Handle);
+			};
 			// ウィンドウを閉じる前の処理
 			this.Closing += (s, e) =>
 			{
-			//	string pos = Win32API.GetWindowPosition(this);
-
 				// ウィンドウ情報を保存する
-			//	Settings.Default.MainWindow = pos;
+				Settings.Default.MainWindow = Win32.GetWindowPosition(this.Handle);
 
+				Settings.Default.SaveSetting();
 				Debug.WriteLine(_htmlDoc2.body.innerHTML);
 			};
+		}
+		/// <summary>
+		/// コマンド履歴
+		/// </summary>
+		/// <param name="sender">送信元</param>
+		/// <param name="e">イベント情報</param>
+		private	void	Scrl_Scroll(object sender, ScrollEventArgs e)
+		{
+			if(!_rngBuf.Exists)
+				return;
+
+			if(ScrollEventType.SmallIncrement == e.ScrollEventType)
+			{
+				this.edit.Text = _rngBuf.After();
+			}
+			else
+			if(ScrollEventType.SmallDecrement == e.ScrollEventType)
+			{
+				this.edit.Text = _rngBuf.Before();
+			}
+			Debug.WriteLine(e.NewValue.ToString());
 		}
 		/// <summary>
 		/// HTMLの解析
@@ -98,13 +116,6 @@ namespace	CommandChat
 		/// <param name="e">イベント情報</param>
 		protected	override	void	OnKeyDown(KeyEventArgs e)
 		{
-			// システムメニューの置き換え
-			if(Keyboard.Modifiers == ModifierKeys.Alt && e.SystemKey == Key.Space)
-			{
-		//		ShowContextMenu();
-		//		e.Handled = true;
-			}
-			else
 			if(Key.Return == e.Key)
 			{
 				if(this.edit.IsFocused)
@@ -113,14 +124,12 @@ namespace	CommandChat
 			else
 			if(Key.F8 == e.Key)
 			{
-				if(_rngBuf.Exists)
-					this.edit.Text = _rngBuf.Before();
+				Scrl_Scroll(this, new ScrollEventArgs(ScrollEventType.SmallDecrement, 1));
 			}
 			else
 			if(Key.F9 == e.Key)
 			{
-				if(_rngBuf.Exists)
-					this.edit.Text = _rngBuf.After();
+				Scrl_Scroll(this, new ScrollEventArgs(ScrollEventType.SmallIncrement, 1));
 			}
 			else
 			{
@@ -150,20 +159,9 @@ namespace	CommandChat
 		/// <param name="handled">結果</param>
 		private	IntPtr	WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
 		{
-			// システムメニューの置き換え
-		/*	if(Win32API.WM_NCRBUTTONDOWN == msg
-			|| Win32API.WM_NCLBUTTONDOWN == msg)
+			switch((uint)msg)
 			{
-				int	nMRU = wParam.ToInt32();
-				if(Win32API.WM_MOVE == nMRU)
-				{
-					ShowContextMenu();
-					handled = true;
-				}
-			}*/
-			switch(msg)
-			{
-			case	WM_APP:
+			case	Win32.WM_APP:
 					Display();
 					break;
 			}
@@ -229,7 +227,7 @@ namespace	CommandChat
 		private	void	ThreadProc(object hwnd)
 		{
 			_Console = Environment.Is64BitProcess ? RunCommand64(_Command): RunCommand32(_Command);
-			PostMessage((IntPtr)hwnd, WM_APP, IntPtr.Zero, IntPtr.Zero);
+			Win32.PostMessage((IntPtr)hwnd, Win32.WM_APP, IntPtr.Zero, IntPtr.Zero);
 		}
 		/// <summary>
 		/// HTMLエンコード
@@ -293,6 +291,7 @@ namespace	CommandChat
 			}
 		}
 	}
+	// リングバッファ
 	public	class	RingBuffer<T> : IEnumerable<T>
 	{
 		private	int		_size;
@@ -341,7 +340,7 @@ namespace	CommandChat
 		public	T	Before()
 		{
 			int	i = (_readIndex-1) % _size;
-			_readIndex = i < 0 ? _writeIndex: i;
+			_readIndex = i < 0 ? 0: i;
 			return	_buffer[_readIndex];
 		}
 		public	T	After()

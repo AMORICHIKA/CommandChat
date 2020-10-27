@@ -1,7 +1,6 @@
 ﻿using System;
 using System.IO;
 using System.Xml;
-using System.Collections.Generic;
 using System.Diagnostics;
 
 namespace	CommandChat.Properties
@@ -13,12 +12,6 @@ namespace	CommandChat.Properties
 	//	SettingsSaving イベントは、設定値が保存される前に発生します。
 	internal	sealed	partial	class	Settings
 	{
-		// 最大履歴数
-		const	int		MAXPLACE = 30;
-
-		// アドレスリスト
-		private	static	List<string>	_MRU = new List<string>();
-
 		/// <summary>
 		/// コンストラクタ
 		/// </summary>
@@ -55,28 +48,8 @@ namespace	CommandChat.Properties
 		/// </summary>
 		public	string	GetFilePath()
 		{
-			System.Reflection.Assembly	asm = System.Reflection.Assembly.GetExecutingAssembly();
-			string	path1 = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData) + @"\";
-
-			// AssemblyCompanyの取得
-			System.Reflection.AssemblyCompanyAttribute	asmcmp = (System.Reflection.AssemblyCompanyAttribute)Attribute.GetCustomAttribute(
-						asm, typeof(System.Reflection.AssemblyCompanyAttribute));
-			path1 += asmcmp.Company + @"\";
-			FileInfo	f1 = new FileInfo(path1);
-			if(!f1.Directory.Exists)
-			{
-				Directory.CreateDirectory(f1.DirectoryName);
-			}
-			// AssemblyProductの取得
-			System.Reflection.AssemblyProductAttribute	asmprd = (System.Reflection.AssemblyProductAttribute)Attribute.GetCustomAttribute(
-						asm, typeof(System.Reflection.AssemblyProductAttribute));
-			path1 += asmprd.Product + @"\";
-			FileInfo	f2 = new FileInfo(path1);
-			if(!f2.Directory.Exists)
-			{
-				Directory.CreateDirectory(f2.DirectoryName);
-			}
-			return	path1;
+			// 設定ファイルを保存するフォルダを指定します
+			return	Path.GetTempPath();
 		}
 
 		// 設定ファイル名
@@ -137,21 +110,6 @@ namespace	CommandChat.Properties
 				// 失敗（初回起動時）
 				Debug.WriteLine("LoadSetting error!!\n");
 			}
-		}
-		/// <summary>
-		/// 場所の登録
-		/// </summary>
-		/// <param name="place">場所</param>
-		/// <returns>空文字:false</returns>
-		public	bool	AddPlace(string place)
-		{
-			if(string.IsNullOrEmpty(place))
-				return	false;
-
-			if(null == _MRU.Find(n => n == place))
-				_MRU.Insert(0, place);
-
-			return	true;
 		}
 		/// <summary>
 		/// 値の検証（文字列）

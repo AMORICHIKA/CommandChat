@@ -1,0 +1,10 @@
+＃ ################################################# ##############################
+＃この.gitignoreファイルはMicrosoft（R）VisualStudioファイルになりました。
+＃ ################################################# ##############################
+
+/ .vs / CommandChat
+/ CommandChat / bin
+/ CommandLib / CommandLib.vcxproj.user
+/ Debug
+/ Release
+/ x64

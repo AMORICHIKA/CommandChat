@@ -22,17 +22,21 @@ namespace	CommandChat
 	/// </summary>
 	public	partial	class	MainWindow : Window
 	{
+		// 32bit版コマンド実行
 		[DllImport("CommandLib.dll", EntryPoint = "RunCommand", CharSet = CharSet.Unicode)]
 		public	static	extern	string	RunCommand32(string command);
 
+		// 64bit版コマンド実行
 		[DllImport("CommandLib64.dll", EntryPoint = "RunCommand", CharSet = CharSet.Unicode)]
 		public	static	extern	string	RunCommand64(string command);
 
+		// HTMLドキュメント
 		private	IHTMLDocument2	_htmlDoc2;
 
-		private	string		_Console;
-		private	string		_Command;
+		private	string		_Console;	// コンソール文字
+		private	string		_Command;	// コマンド文字
 
+		// コマンド履歴バッファ(Max.20)
 		private	RingBuffer<string>	_rngBuf = new RingBuffer<string>(20);
 
 		/// <summary>
@@ -53,6 +57,7 @@ namespace	CommandChat
 			this.InitializeComponent();
 			this.Loaded += MainWindow_Loaded;
 
+			// タイトルバーアイコン
 			this.Icon = new BitmapImage(new Uri("pack://application:,,,/Resources/console.png"));
 			this.Title = Directory.GetCurrentDirectory();
 
@@ -119,7 +124,7 @@ namespace	CommandChat
 			if(Key.Return == e.Key)
 			{
 				if(this.edit.IsFocused)
-					Action();
+					Send();
 			}
 			else
 			if(Key.F8 == e.Key)
@@ -162,15 +167,15 @@ namespace	CommandChat
 			switch((uint)msg)
 			{
 			case	Win32.WM_APP:
-					Display();
+					Receive();
 					break;
 			}
 			return	IntPtr.Zero;
 		}
 		/// <summary>
-		/// 結果の表示
+		/// 受信
 		/// </summary>
-		private	void	Display()
+		private	void	Receive()
 		{
 			string	returnhtml = _Console;
 			if(!string.IsNullOrEmpty(returnhtml))
@@ -191,9 +196,9 @@ namespace	CommandChat
 			this.Title = Directory.GetCurrentDirectory();
 		}
 		/// <summary>
-		/// コマンドの表示
+		/// 送信
 		/// </summary>
-		private	void	Action()
+		private	void	Send()
 		{
 			if(!this.edit.IsFocused)
 				this.edit.Focus();
@@ -319,15 +324,13 @@ namespace	CommandChat
 
 		public	void	Add(T value)
 		{
-			if(Find(value))
-			{
-				return;
-			}
 			_writeIndex = NextIndex(_writeIndex);
 			if(_writeIndex == _size - 1)
 				_isFull = true;
+
 			_buffer[_writeIndex] = value;
 		}
+
 		public	bool	Find(T value)
 		{
 			for(int i = 0; i < Count; i++)
@@ -337,18 +340,21 @@ namespace	CommandChat
 			}
 			return	false;
 		}
+
 		public	T	Before()
 		{
 			int	i = (_readIndex-1) % _size;
 			_readIndex = i < 0 ? 0: i;
 			return	_buffer[_readIndex];
 		}
+
 		public	T	After()
 		{
 			int	i = (_readIndex+1) % _size;
 			_readIndex = _writeIndex < i ? _writeIndex: i;
 			return	_buffer[_readIndex];
 		}
+
 		public	bool	Exists
 		{
 			get { return Count > 0; }

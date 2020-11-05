@@ -175,14 +175,16 @@ namespace
 		if(last != std::wstring::npos)
 		{
 			// フォルダの変更以外は、最終行のフォルダ名を削除する
-			path = pwstr->substr(last+1);
-			if(path == curpath+L">")
+			std::wstring	tmp = pwstr->substr(last+1);
+			if(tmp == curpath+L">")
 			{
 				pwstr->erase(last);
 			}
-			size_t	pos = path.find_last_of(L'>');
+			size_t	pos = tmp.find_last_of(L'>');
 			if(pos != std::wstring::npos)
-				path.erase(pos);
+			{
+				path = tmp.erase(pos);
+			}
 		}
 		// 先頭の行を削除する
 		const	size_t	first = pwstr->find_first_of(L'\n');

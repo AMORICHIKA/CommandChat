@@ -19,6 +19,7 @@ private:
 	static	UINT	WINAPI	ThreadReadStdOut(void*);
 
 private:
+	std::wstring	curPath_;
 	HWND	hwnd_;
 	HANDLE	hProcess_;
 	HANDLE	readPipeStdIn_;
@@ -29,5 +30,3 @@ private:
 	HANDLE	threadReadStdOut_;
 	HANDLE	eventExit_;
 };
-
-LPWSTR	GetCurrentWorkingDirectory(HANDLE hProcess);

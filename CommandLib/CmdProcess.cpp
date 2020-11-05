@@ -162,20 +162,40 @@ namespace
 		}
 		return	str;
 	}
-
-	void	TrimStringLine(std::wstring* pwstr)
+	/// <summary>
+	/// 表示文字の編集
+	/// </summary>
+	/// <param name="pwstr">表示文字列</param>
+	/// <param name="curpath">現在のカレントフォルダ</param>
+	/// <returns>カレントフォルダ</returns>
+	std::wstring	TrimStringLine(std::wstring* pwstr, const std::wstring& curpath)
 	{
+		std::wstring	path = curpath;
 		const	size_t	last = pwstr->find_last_of(L'\n');
 		if(last != std::wstring::npos)
 		{
-			pwstr->erase(last);
+			// フォルダの変更以外は、最終行のフォルダ名を削除する
+			path = pwstr->substr(last+1);
+			if(path == curpath+L">")
+			{
+				pwstr->erase(last);
+			}
+			size_t	pos = path.find_last_of(L'>');
+			if(pos != std::wstring::npos)
+				path.erase(pos);
 		}
-
+		// 先頭の行を削除する
 		const	size_t	first = pwstr->find_first_of(L'\n');
 		if(first != std::wstring::npos)
 		{
-			pwstr->erase(0, first);
+			pwstr->erase(0, first+1);
 		}
+		// 何もない場合はカレントフォルダを表示する
+		if(L"\r" == *pwstr)
+		{
+			*pwstr = curpath + L">\r\n";
+		}
+		return	path;
 	}
 
 	HANDLE	StartThread(_beginthreadex_proc_type startAddress, void* argList)
@@ -247,7 +267,7 @@ BOOL	CmdProcess::Create(HWND hwnd)
 	PROCESS_INFORMATION	pi = { 0 };
 	if(!CreateProcessW(NULL, &commandLineBuffer.front(), NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi))
 	{
-		return FALSE;
+		return	FALSE;
 	}
 
 	WaitForSingleObject(pi.hProcess, 1000);
@@ -448,13 +468,13 @@ void	CmdProcess::ReadStdOut()
 					std::string str(buffers.cbegin(), buffers.cend());
 					buffers.clear();
 					std::wstring	wstr = ToWString(str);
-					TrimStringLine(&wstr);
+					std::wstring	path = curPath_;
+					curPath_ = TrimStringLine(&wstr, path);
 					ChatData::Get()->PushBackOutput(wstr);
 
-					// プロセスのカレントフォルダを取得して設定
-					LPWSTR	lpszCurrentDirectory = GetCurrentWorkingDirectory(hProcess_);
-					SetCurrentDirectoryW(lpszCurrentDirectory);
-					GlobalFree((HGLOBAL)lpszCurrentDirectory);
+					// フォルダの変更を反映する
+					if(path != curPath_)
+						SetCurrentDirectoryW(curPath_.c_str());
 
 					PostMessageW(hwnd_, WM_APP, 0, 0);
 				}

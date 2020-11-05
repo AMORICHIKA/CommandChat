@@ -8,5 +8,14 @@
 #define _LIB_EXT_FUNC	__declspec( dllimport )
 #endif
 
+// åˆäJä÷êî
 extern "C"
-_LIB_EXT_FUNC	LPWSTR	RunCommand(LPCWSTR lpszCommand);
+{
+_LIB_EXT_FUNC	BOOL	WINAPI	CmdCreate(HWND hWnd);
+
+_LIB_EXT_FUNC	LPWSTR	WINAPI	CmdPop();
+
+_LIB_EXT_FUNC	BOOL	WINAPI	CmdRun(LPCTSTR cmd);
+
+_LIB_EXT_FUNC	void	WINAPI	CmdExit();
+}

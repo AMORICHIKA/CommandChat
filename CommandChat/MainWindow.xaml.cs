@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
-using System.Threading;
 using System.Windows;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
@@ -22,19 +21,37 @@ namespace	CommandChat
 	/// </summary>
 	public	partial	class	MainWindow : Window
 	{
-		// 32bit版コマンド実行
-		[DllImport("CommandLib.dll", EntryPoint = "RunCommand", CharSet = CharSet.Unicode)]
-		public	static	extern	string	RunCommand32(string command);
+		// ----------------------------------------------------------------------------------------
+		// 32bit版
+		[DllImport("CommandLib.dll", EntryPoint = "CmdCreate")]
+		public	static	extern	bool	CmdCreate32(IntPtr hWnd);
 
-		// 64bit版コマンド実行
-		[DllImport("CommandLib64.dll", EntryPoint = "RunCommand", CharSet = CharSet.Unicode)]
-		public	static	extern	string	RunCommand64(string command);
+		[DllImport("CommandLib.dll", EntryPoint = "CmdPop", CharSet = CharSet.Unicode)]
+		[return: MarshalAs(UnmanagedType.LPWStr)]
+		public	static	extern	string	CmdPop32();
+
+		[DllImport("CommandLib.dll", EntryPoint = "CmdRun", CharSet = CharSet.Unicode)]
+		public	static	extern	bool	CmdRun32(string cmd);
+
+		[DllImport("CommandLib.dll", EntryPoint = "CmdExit")]
+		public	static	extern	void	CmdExit32();
+		// ----------------------------------------------------------------------------------------
+		// 64bit版
+		[DllImport("CommandLib64.dll", EntryPoint = "CmdCreate")]
+		public	static	extern	bool	CmdCreate64(IntPtr hWnd);
+
+		[DllImport("CommandLib64.dll", EntryPoint = "CmdPop", CharSet = CharSet.Unicode)]
+		[return: MarshalAs(UnmanagedType.LPWStr)]
+		public	static	extern	string	CmdPop64();
+
+		[DllImport("CommandLib64.dll", EntryPoint = "CmdRun", CharSet = CharSet.Unicode)]
+		public	static	extern	bool	CmdRun64(string cmd);
+
+		[DllImport("CommandLib64.dll", EntryPoint = "CmdExit")]
+		public	static	extern	void	CmdExit64();
 
 		// HTMLドキュメント
-		private	IHTMLDocument2	_htmlDoc2;
-
-		private	string		_Console;	// コンソール文字
-		private	string		_Command;	// コマンド文字
+		private IHTMLDocument2	_htmlDoc2;
 
 		// コマンド履歴バッファ(Max.20)
 		private	RingBuffer<string>	_rngBuf = new RingBuffer<string>(20);
@@ -83,6 +100,11 @@ namespace	CommandChat
 
 				Settings.Default.SaveSetting();
 				Debug.WriteLine(_htmlDoc2.body.innerHTML);
+
+				if(Environment.Is64BitProcess)
+					CmdExit64();
+				else
+					CmdExit32();
 			};
 		}
 		/// <summary>
@@ -121,25 +143,29 @@ namespace	CommandChat
 		/// <param name="e">イベント情報</param>
 		protected	override	void	OnKeyDown(KeyEventArgs e)
 		{
-			if(Key.Return == e.Key)
+			switch(e.Key)
 			{
+			case	Key.Escape:
+				Close();
+				return;
+
+			case	Key.Return:
 				if(this.edit.IsFocused)
+				{
 					Send();
-			}
-			else
-			if(Key.F8 == e.Key)
-			{
+					return;
+				}
+				break;
+
+			case	Key.F8:
 				Scrl_Scroll(this, new ScrollEventArgs(ScrollEventType.SmallDecrement, 1));
-			}
-			else
-			if(Key.F9 == e.Key)
-			{
+				return;
+
+			case	Key.F9:
 				Scrl_Scroll(this, new ScrollEventArgs(ScrollEventType.SmallIncrement, 1));
+				return;
 			}
-			else
-			{
-				base.OnKeyDown(e);
-			}
+			base.OnKeyDown(e);
 		}
 		/// <summary>
 		/// ウィンドウのロード
@@ -153,6 +179,9 @@ namespace	CommandChat
 			source.AddHook(new HwndSourceHook(WndProc));
 
 			this.edit.Focus();
+
+			// コマンドプロセスを起動
+			bool	rc = Environment.Is64BitProcess ? CmdCreate64(this.Handle): CmdCreate32(this.Handle);
 		}
 		/// <summary>
 		/// ウィンドウプロシジャ
@@ -177,13 +206,13 @@ namespace	CommandChat
 		/// </summary>
 		private	void	Receive()
 		{
-			string	returnhtml = _Console;
-			if(!string.IsNullOrEmpty(returnhtml))
+			string	returnhtml;
+			while(!string.IsNullOrEmpty(returnhtml = Environment.Is64BitProcess ? CmdPop64(): CmdPop32()))
 			{
 				string	returnhtml2 = HtmlEncode(returnhtml);
 				DateTime	dt = DateTime.Now;
 				string	html = "<div class=\"result\"><div class=\"icon\"><img></div><div id=\"box1\"><div class=\"output\"><pre>";
-				html += !string.IsNullOrEmpty(returnhtml2) ? returnhtml2: returnhtml;
+				html += returnhtml2;
 				html += string.Format("</pre></div></div><div id=\"box2\">{0:D2}:{1:D2}</div></div>", dt.Hour, dt.Minute);
 
 				IHTMLElement	elm2 = _htmlDoc2.body;
@@ -203,16 +232,16 @@ namespace	CommandChat
 			if(!this.edit.IsFocused)
 				this.edit.Focus();
 
-			_Command = this.edit.Text;
-			int nTextLength = _Command.Length;
+			string	command = this.edit.Text;
+			int	nTextLength = command.Length;
 			if(0 < nTextLength)
 			{
-				_rngBuf.Add(_Command);
+				_rngBuf.Add(command);
 
-				string	szCommand2 = HtmlEncode(_Command);
+				string	szCommand2 = HtmlEncode(command);
 				DateTime	dt = DateTime.Now;
 				string	html = string.Format("<div id=\"box2\">既読<br>{0:D2}:{1:D2}</div><div id=\"box1\"class=\"input\"><pre>", dt.Hour, dt.Minute);
-				html += !string.IsNullOrEmpty(szCommand2) ? szCommand2: _Command;
+				html += szCommand2;
 				html += "</pre></div>";
 
 				IHTMLElement	elm2 = _htmlDoc2.body;
@@ -222,17 +251,8 @@ namespace	CommandChat
 				this.edit.Text = "";
 				this.brow.IsEnabled = false;
 				this.edit.IsEnabled = false;
-				Thread	thr = new Thread(new ParameterizedThreadStart(ThreadProc));
-				thr.Start(this.Handle);
+				bool	rc = Environment.Is64BitProcess ? CmdRun64(command): CmdRun32(command);
 			}
-		}
-		/// <summary>
-		/// スレッドの実行
-		/// </summary>
-		private	void	ThreadProc(object hwnd)
-		{
-			_Console = Environment.Is64BitProcess ? RunCommand64(_Command): RunCommand32(_Command);
-			Win32.PostMessage((IntPtr)hwnd, Win32.WM_APP, IntPtr.Zero, IntPtr.Zero);
 		}
 		/// <summary>
 		/// HTMLエンコード
@@ -241,47 +261,27 @@ namespace	CommandChat
 		/// <returns>変換後</returns>
 		private	string	HtmlEncode(string lpText)
 		{
-			int	i, m;
 			int	n = lpText.Length;
-			for(i = 0, m = 0; i < n; i++)
-			{
-				switch(lpText[i])
-				{
-				case '>':
-				case '<':
-					m += 4;
-					break;
-				case '&':
-					m += 5;
-					break;
-				default:
-					m++;
-					break;
-				}
-			}
-			if(n == m)
-				return	null;
-
-			string	ptr = "";
-			for(i = 0; i < n; i++)
+			string	html = "";
+			for(int i = 0; i < n; i++)
 			{
 				switch (lpText[i])
 				{
 				case '>':
-					ptr += "&gt;";
+					html += "&gt;";
 					break;
 				case '<':
-					ptr += "&lt;";
+					html += "&lt;";
 					break;
 				case '&':
-					ptr += "&amp;";
+					html += "&amp;";
 					break;
 				default:
-					ptr += lpText[i];
+					html += lpText[i];
 					break;
 				}
 			}
-			return	ptr;
+			return	html;
 		}
 		/// <summary>
 		/// 最終行へスクロール

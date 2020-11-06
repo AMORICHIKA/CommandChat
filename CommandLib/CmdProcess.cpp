@@ -167,8 +167,9 @@ namespace
 	/// </summary>
 	/// <param name="pwstr">表示文字列</param>
 	/// <param name="curpath">現在のカレントフォルダ</param>
+	/// <param name="commandLineErase">コマンド行の削除判定</param>
 	/// <returns>カレントフォルダ</returns>
-	std::wstring	TrimStringLine(std::wstring* pwstr, const std::wstring& curpath)
+	std::wstring	TrimStringLine(std::wstring* pwstr, const std::wstring& curpath, BOOL commandLineErase)
 	{
 		std::wstring	path = curpath;
 		const	size_t	last = pwstr->find_last_of(L'\n');
@@ -190,7 +191,10 @@ namespace
 		const	size_t	first = pwstr->find_first_of(L'\n');
 		if(first != std::wstring::npos)
 		{
-			pwstr->erase(0, first+1);
+			if(commandLineErase) 
+			{
+				pwstr->erase(0, first+1);
+			}
 		}
 		// 何もない場合はカレントフォルダを表示する
 		if(L"\r" == *pwstr)
@@ -216,6 +220,7 @@ CmdProcess::CmdProcess()
 	, threadProcess_{ NULL }
 	, threadReadStdOut_{ NULL }
 	, eventExit_{ NULL }
+	, commandLineErase_{ FALSE }
 {
 }
 
@@ -380,6 +385,8 @@ BOOL	CmdProcess::RunCommand(LPCWSTR lpszCommand)
 		return	FALSE;
 	}
 
+	commandLineErase_ = TRUE;
+
 	return	TRUE;
 }
 
@@ -471,7 +478,12 @@ void	CmdProcess::ReadStdOut()
 					buffers.clear();
 					std::wstring	wstr = ToWString(str);
 					std::wstring	path = curPath_;
-					curPath_ = TrimStringLine(&wstr, path);
+					curPath_ = TrimStringLine(&wstr, path, commandLineErase_);
+					if(commandLineErase_)
+					{
+						commandLineErase_ = FALSE;
+					}
+
 					ChatData::Get()->PushBackOutput(wstr);
 
 					// フォルダの変更を反映する

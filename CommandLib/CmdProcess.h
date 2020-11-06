@@ -20,6 +20,7 @@ private:
 
 private:
 	std::wstring	curPath_;
+
 	HWND	hwnd_;
 	HANDLE	hProcess_;
 	HANDLE	readPipeStdIn_;
@@ -29,4 +30,6 @@ private:
 	HANDLE	threadProcess_;
 	HANDLE	threadReadStdOut_;
 	HANDLE	eventExit_;
+
+	BOOL	commandLineErase_;
 };

@@ -56,6 +56,9 @@ namespace	CommandChat
 		// コマンド履歴バッファ(Max.20)
 		private	RingBuffer<string>	_rngBuf = new RingBuffer<string>(20);
 
+		// エラーメッセージ
+		private	bool	_error = false;
+
 		/// <summary>
 		/// This is the Win32 Interop Handle for this Window
 		/// </summary>
@@ -209,7 +212,18 @@ namespace	CommandChat
 			string	returnhtml;
 			while(!string.IsNullOrEmpty(returnhtml = Environment.Is64BitProcess ? CmdPop64(): CmdPop32()))
 			{
+				if(_error)
+				{
+					// エラー表示した場合は標準メッセージをスキップ
+					_error = false;
+					continue;
+				}
 				string	returnhtml2 = HtmlEncode(returnhtml);
+				if(returnhtml2.StartsWith("ERR:"))
+				{
+					returnhtml2 = "<font color=\"#ff0000\">"+returnhtml2.Remove(0, 4)+"</font>";
+					_error = true;
+				}
 				DateTime	dt = DateTime.Now;
 				string	html = "<div class=\"result\"><div class=\"icon\"><img></div><div id=\"box1\"><div class=\"output\"><pre>";
 				html += returnhtml2;
@@ -234,25 +248,25 @@ namespace	CommandChat
 
 			string	command = this.edit.Text;
 			int	nTextLength = command.Length;
-			if(0 < nTextLength)
-			{
+			if(0 == nTextLength)
+				command = "\n";
+			else
 				_rngBuf.Add(command);
 
-				string	szCommand2 = HtmlEncode(command);
-				DateTime	dt = DateTime.Now;
-				string	html = string.Format("<div id=\"box2\">既読<br>{0:D2}:{1:D2}</div><div id=\"box1\"class=\"input\"><pre>", dt.Hour, dt.Minute);
-				html += szCommand2;
-				html += "</pre></div>";
+			string	szCommand2 = HtmlEncode(command);
+			DateTime	dt = DateTime.Now;
+			string	html = string.Format("<div id=\"box2\">既読<br>{0:D2}:{1:D2}</div><div id=\"box1\"class=\"input\"><pre>", dt.Hour, dt.Minute);
+			html += "\n" == szCommand2 ? "⏎": szCommand2;
+			html += "</pre></div>";
 
-				IHTMLElement	elm2 = _htmlDoc2.body;
-				elm2.insertAdjacentHTML("beforeend", html);
-				ScrollBottom(_htmlDoc2);
+			IHTMLElement	elm2 = _htmlDoc2.body;
+			elm2.insertAdjacentHTML("beforeend", html);
+			ScrollBottom(_htmlDoc2);
 
-				this.edit.Text = "";
-				this.brow.IsEnabled = false;
-				this.edit.IsEnabled = false;
-				bool	rc = Environment.Is64BitProcess ? CmdRun64(command): CmdRun32(command);
-			}
+			this.edit.Text = "";
+			this.brow.IsEnabled = false;
+			this.edit.IsEnabled = false;
+			bool	rc = Environment.Is64BitProcess ? CmdRun64(command): CmdRun32(command);
 		}
 		/// <summary>
 		/// HTMLエンコード

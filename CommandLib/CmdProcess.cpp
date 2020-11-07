@@ -215,12 +215,7 @@ CmdProcess::CmdProcess()
 	, hProcess_{ NULL }
 	, readPipeStdIn_{ NULL }
 	, writePipeStdIn_{ NULL }
-	, readPipeStdOut_{ NULL }
-	, writePipeStdOut_{ NULL }
 	, threadProcess_{ NULL }
-	, threadReadStdOut_{ NULL }
-	, eventExit_{ NULL }
-	, commandLineErase_{ FALSE }
 {
 }
 
@@ -254,18 +249,23 @@ BOOL	CmdProcess::Create(HWND hwnd)
 		return	FALSE;
 	}
 
-	if(!CreatePipeEx(&readPipeStdOut_, &writePipeStdOut_, &sa, 0, FILE_FLAG_OVERLAPPED, 0))
+	if(!stdMonitor.Create(hwnd_))
+	{
+		return	FALSE;
+	}
+
+	if(!errMonitor.Create(hwnd_))
 	{
 		return	FALSE;
 	}
 
 	STARTUPINFOW	si = { 0 };
-	si.cb = sizeof(si);
-	si.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
-	si.hStdOutput = writePipeStdOut_;
-	si.hStdInput = readPipeStdIn_;
-	si.hStdError = writePipeStdOut_;
-	si.wShowWindow = SW_HIDE;
+	si.cb			= sizeof(si);
+	si.dwFlags		= STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
+	si.hStdOutput	= stdMonitor.GetHandle();
+	si.hStdInput	= readPipeStdIn_;
+	si.hStdError	= errMonitor.GetHandle();
+	si.wShowWindow	= SW_HIDE;
 
 	std::wstring	commandLine = szCmdExePath;
 
@@ -283,8 +283,12 @@ BOOL	CmdProcess::Create(HWND hwnd)
 
 	hProcess_ = pi.hProcess;
 
-	eventExit_ = CreateEventW(NULL, FALSE, FALSE, NULL);
-	if(NULL == eventExit_)
+	if(!stdMonitor.Start(hProcess_))
+	{
+		return	FALSE;
+	}
+
+	if(!errMonitor.Start(hProcess_))
 	{
 		return	FALSE;
 	}
@@ -295,28 +299,14 @@ BOOL	CmdProcess::Create(HWND hwnd)
 		return	FALSE;
 	}
 
-	threadReadStdOut_ = StartThread(&CmdProcess::ThreadReadStdOut, nullptr);
-	if(NULL == threadReadStdOut_)
-	{
-		return	FALSE;
-	}
-
 	return	TRUE;
 }
 
 BOOL	CmdProcess::Exit()
 {
-	if(eventExit_)
-	{
-		if(threadReadStdOut_)
-		{
-			SetEvent(eventExit_);
-			WaitForSingleObject(threadReadStdOut_, 30 * 1000);
-			threadReadStdOut_ = NULL;
-		}
-		CloseHandle(eventExit_);
-		eventExit_ = NULL;
-	}
+	stdMonitor.Exit();
+
+	errMonitor.Exit();
 
 	if(hwnd_)
 	{
@@ -333,18 +323,6 @@ BOOL	CmdProcess::Exit()
 	{
 		CloseHandle(writePipeStdIn_);
 		writePipeStdIn_ = NULL;
-	}
-
-	if(readPipeStdOut_)
-	{
-		CloseHandle(readPipeStdOut_);
-		readPipeStdOut_ = NULL;
-	}
-
-	if(writePipeStdOut_)
-	{
-		CloseHandle(writePipeStdOut_);
-		writePipeStdOut_ = NULL;
 	}
 
 	if(hProcess_)
@@ -376,16 +354,16 @@ BOOL	CmdProcess::RunCommand(LPCWSTR lpszCommand)
 
 	WaitForSingleObject(hProcess_, 1000);
 
-	std::wstring command = lpszCommand;
+	std::wstring	command = lpszCommand;
 	command += L"\n";
 
-	std::string writeBuf = ToString(command);
+	std::string	writeBuf = ToString(command);
 	if(!WriteFile(writePipeStdIn_, &writeBuf.front(), static_cast<DWORD>(writeBuf.length()), NULL, NULL))
 	{
 		return	FALSE;
 	}
 
-	commandLineErase_ = TRUE;
+	stdMonitor.Erase();
 
 	return	TRUE;
 }
@@ -398,7 +376,69 @@ void	CmdProcess::NotifyExitProcess()
 	}
 }
 
-void	CmdProcess::ReadStdOut()
+UINT	WINAPI	CmdProcess::ThreadCmdProcess(void* phProcess)
+{
+	HANDLE	hProcess = *static_cast<HANDLE*>(phProcess);
+	WaitForSingleObject(hProcess, INFINITE);
+	CmdProcess::Get()->NotifyExitProcess();
+	return	0;
+}
+
+PipeMonitor::PipeMonitor()
+	: hProcess_(NULL)
+	, hwnd_(NULL)
+	, eventExit_(NULL)
+	, readPipeOut_(NULL)
+	, writePipeOut_(NULL)
+	, threadReadOut_(NULL)
+{
+}
+
+PipeMonitor::~PipeMonitor()
+{
+	Exit();
+}
+
+BOOL	PipeMonitor::Create(HWND hwnd)
+{
+	hwnd_ = hwnd;
+
+	SECURITY_ATTRIBUTES	sa = { 0 };
+	sa.nLength			= sizeof(sa);
+	sa.bInheritHandle	= TRUE;
+
+	if(!CreatePipeEx(&readPipeOut_, &writePipeOut_, &sa, 0, FILE_FLAG_OVERLAPPED, 0))
+	{
+		return	FALSE;
+	}
+	return	TRUE;
+}
+
+BOOL	PipeMonitor::Start(HANDLE hProcess)
+{
+	hProcess_  = hProcess;
+	eventExit_ = CreateEventW(NULL, FALSE, FALSE, NULL);
+	if(NULL == eventExit_)
+	{
+		return	FALSE;
+	}
+
+	threadReadOut_ = StartThread(&PipeMonitor::ThreadReadOut, this);
+	if(NULL == threadReadOut_)
+	{
+		return	FALSE;
+	}
+	return	TRUE;
+}
+
+UINT	WINAPI	PipeMonitor::ThreadReadOut(void* p)
+{
+	PipeMonitor*	pmon = static_cast<PipeMonitor*>(p);
+	pmon->Read();
+	return	0;
+}
+
+void	PipeMonitor::Read()
 {
 	HANDLE	eventRead = CreateEvent(NULL, FALSE, FALSE, NULL);
 	if(NULL == eventRead)
@@ -430,13 +470,14 @@ void	CmdProcess::ReadStdOut()
 	std::vector<char>	buffers;
 	while(!exit)
 	{
-		if(!ReadFile(readPipeStdOut_, NULL, 0, NULL, &overlapped))
+		if(!ReadFile(readPipeOut_, NULL, 0, NULL, &overlapped))
 		{
 			if(ERROR_IO_PENDING != GetLastError())
 			{
 				continue;
 			}
 		}
+
 		const	DWORD	timeout = reading ? 500: INFINITE;
 		const	DWORD	dwWaitResult = WaitForMultipleObjects(EVENT_COUNT, handles, FALSE, timeout);
 		switch(dwWaitResult)
@@ -446,7 +487,7 @@ void	CmdProcess::ReadStdOut()
 				reading = TRUE;
 
 				DWORD	totalBytesAvail = 0;
-				if(PeekNamedPipe(readPipeStdOut_, NULL, 0, NULL, &totalBytesAvail, NULL))
+				if(PeekNamedPipe(readPipeOut_, NULL, 0, NULL, &totalBytesAvail, NULL))
 				{
 					if(0 < totalBytesAvail)
 					{
@@ -454,7 +495,7 @@ void	CmdProcess::ReadStdOut()
 						buffers.resize(size + totalBytesAvail);
 
 						DWORD	numberOfBytesRead = 0;
-						if(ReadFile(readPipeStdOut_, &buffers[size], totalBytesAvail, &numberOfBytesRead, NULL))
+						if(ReadFile(readPipeOut_, &buffers[size], totalBytesAvail, &numberOfBytesRead, NULL))
 						{
 							buffers.resize(size + numberOfBytesRead);
 						}
@@ -474,23 +515,9 @@ void	CmdProcess::ReadStdOut()
 
 				if(!buffers.empty())
 				{
-					std::string str(buffers.cbegin(), buffers.cend());
+					std::string	str(buffers.cbegin(), buffers.cend());
 					buffers.clear();
-					std::wstring	wstr = ToWString(str);
-					std::wstring	path = curPath_;
-					curPath_ = TrimStringLine(&wstr, path, commandLineErase_);
-					if(commandLineErase_)
-					{
-						commandLineErase_ = FALSE;
-					}
-
-					ChatData::Get()->PushBackOutput(wstr);
-
-					// フォルダの変更を反映する
-					if(path != curPath_)
-						SetCurrentDirectoryW(curPath_.c_str());
-
-					PostMessageW(hwnd_, WM_APP, 0, 0);
+					Read(str);
 				}
 			}
 			break;
@@ -501,16 +528,69 @@ void	CmdProcess::ReadStdOut()
 	}
 }
 
-UINT	WINAPI	CmdProcess::ThreadCmdProcess(void* phProcess)
+void	PipeMonitor::Exit()
 {
-	HANDLE	hProcess = *static_cast<HANDLE*>(phProcess);
-	WaitForSingleObject(hProcess, INFINITE);
-	CmdProcess::Get()->NotifyExitProcess();
-	return	0;
+	if(eventExit_)
+	{
+		if(threadReadOut_)
+		{
+			SetEvent(eventExit_);
+			WaitForSingleObject(threadReadOut_, 30 * 1000);
+			threadReadOut_ = NULL;
+		}
+		CloseHandle(eventExit_);
+		eventExit_ = NULL;
+	}
+	if(hwnd_)
+	{
+		hwnd_ = NULL;
+	}
+	if(readPipeOut_)
+	{
+		CloseHandle(readPipeOut_);
+		readPipeOut_ = NULL;
+	}
+	if(writePipeOut_)
+	{
+		CloseHandle(writePipeOut_);
+		writePipeOut_ = NULL;
+	}
 }
 
-UINT	WINAPI	CmdProcess::ThreadReadStdOut(void*)
+ReadStdOut::ReadStdOut()
+	: commandLineErase_(FALSE)
 {
-	CmdProcess::Get()->ReadStdOut();
-	return	0;
+	;
+}
+
+void	ReadStdOut::Read(const std::string& str)
+{
+	std::wstring	wstr = ToWString(str);
+	std::wstring	path = curPath_;
+	curPath_ = TrimStringLine(&wstr, path, commandLineErase_);
+	if(commandLineErase_)
+	{
+		commandLineErase_ = FALSE;
+	}
+
+	ChatData::Get()->PushBackOutput(wstr);
+
+	// フォルダの変更を反映する
+	if(path != curPath_)
+		SetCurrentDirectoryW(curPath_.c_str());
+
+	PostMessageW(hwnd_, WM_APP, 0, 0);
+}
+
+ReadErrOut::ReadErrOut()
+{
+	;
+}
+
+void	ReadErrOut::Read(const std::string& str)
+{
+	std::wstring	wstr = ToWString(str);
+	TrimStringLine(&wstr, L"", FALSE);
+	ChatData::Get()->PushBackOutput(L"ERR:" + wstr);
+	PostMessageW(hwnd_, WM_APP, 0, 0);
 }
